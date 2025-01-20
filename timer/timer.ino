@@ -1,8 +1,9 @@
+
 /*================================================================================*
    Pinewood Derby Timer                                Version 3.10 - 12 Dec 2020
    www.dfgtec.com/pdt
 
-   Flexible and affordable Pinewood Derby timer that interfaces with the 
+   Flexible and affordable Pinewood Derby timer that interfaces with the
    following software:
      - PD Test/Tune/Track Utility
      - Grand Prix Race Manager software
@@ -13,24 +14,24 @@
    Copyright (C) 2011-2020 David Gadberry
 
    This work is licensed under the Creative Commons Attribution-NonCommercial-
-   ShareAlike 3.0 Unported License. To view a copy of this license, visit 
-   http://creativecommons.org/licenses/by-nc-sa/3.0/ or send a letter to 
-   Creative Commons, 444 Castro Street, Suite 900, Mountain View, California, 
+   ShareAlike 3.0 Unported License. To view a copy of this license, visit
+   http://creativecommons.org/licenses/by-nc-sa/3.0/ or send a letter to
+   Creative Commons, 444 Castro Street, Suite 900, Mountain View, California,
    94041, USA.
  *================================================================================*/
 
 /*-----------------------------------------*
   - TIMER CONFIGURATION -
  *-----------------------------------------*/
-#define NUM_LANES    1                 // number of lanes
+#define NUM_LANES    4                 // number of lanes
 #define GATE_RESET   0                 // Enable closing start gate to reset timer
 
-//#define LED_DISPLAY  1                 // Enable lane place/time displays
-//#define DUAL_DISP    1                 // dual displays per lane (4 lanes max)
-//#define DUAL_MODE    1                 // dual display mode
-//#define LARGE_DISP   1                 // utilize large Adafruit displays (see website)
+#define LED_DISPLAY                    // Enable lane place/time displays
+#define DUAL_DISP                      // dual displays per lane (4 lanes max)
+#define DUAL_MODE                      // dual display mode
+//#define LARGE_DISP                   // utilize large Adafruit displays (see website)
 
-#define SHOW_PLACE   1                 // Show place mode
+#define SHOW_PLACE   0                 // Show place mode
 #define PLACE_DELAY  3                 // Delay (secs) when displaying place/time
 #define MIN_BRIGHT   0                 // minimum display brightness (0-15)
 #define MAX_BRIGHT   15                // maximum display brightness (0-15)
@@ -106,7 +107,8 @@ byte START_GATE   = 12;                // start gate switch
 byte START_SOL    = 13;                // start solenoid
 
 //                Display #    1     2     3     4     5     6     7     8
-int  DISP_ADD [MAX_DISP] = {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77};    // display I2C addresses
+//int  DISP_ADD [MAX_DISP] = {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77};    // display I2C addresses
+int  DISP_ADD [MAX_DISP] = {0x74, 0x75, 0x76, 0x77, 0x70, 0x71, 0x72, 0x73};    // display I2C addresses
 
 //                   Lane #    1     2     3     4     5     6
 byte LANE_DET [MAX_LANE] = {   2,    3,    4,    5,    6,    7};                // finish detection pins
@@ -115,6 +117,7 @@ byte LANE_DET [MAX_LANE] = {   2,    3,    4,    5,    6,    7};                
   - global variables -
  *-----------------------------------------*/
 boolean       fDebug = false;          // debug flag
+boolean myDebug = true;
 boolean       ready_first;             // first pass in ready state flag
 boolean       finish_first;            // first pass in finish state flag
 
@@ -160,7 +163,7 @@ void smsg_str(const char * msg, boolean crlf=true);
   SETUP TIMER
  *================================================================================*/
 void setup()
-{
+{  
 /*-----------------------------------------*
   - hardware setup -
  *-----------------------------------------*/
@@ -171,7 +174,7 @@ void setup()
   pinMode(RESET_SWITCH, INPUT);
   pinMode(START_GATE,   INPUT);
   pinMode(BRIGHT_LEV,   INPUT);
-
+ 
   digitalWrite(RESET_SWITCH, HIGH);    // enable pull-up resistor
   digitalWrite(START_GATE,   HIGH);    // enable pull-up resistor
 
@@ -223,6 +226,16 @@ void setup()
  *-----------------------------------------*/
   initialize(true);
   unmask_all_lanes();
+////////////////////////////
+//  Write a 5 to 8x8 display
+  disp_8x8[0].setTextSize(1);
+  disp_8x8[0].setRotation(3);
+  disp_8x8[0].setCursor(2, 0);
+   disp_8x8[0].print("5");
+  disp_8x8[0].writeDisplay();
+  // while (1);
+  /////////////////////////////////
+
 }
 
 
@@ -266,7 +279,7 @@ void timer_ready_state()
     digitalWrite(START_SOL, HIGH);
     smsg(SMSG_ACKNW);
   }
-
+ 
   if (digitalRead(START_GATE) == START_TRIP)    // timer start
   {
     start_time = micros();
@@ -281,7 +294,7 @@ void timer_ready_state()
 
   return;
 }
-
+ 
 
 /*================================================================================*
   TIMER RACING STATE
@@ -328,7 +341,7 @@ void timer_racing_state()
         update_display(n, lane_place[n], lane_time[n], SHOW_PLACE);
       }
     }
-
+   
     serial_data = get_serial_data();
 
     if (serial_data == int(SMSG_FORCE) || serial_data == int(SMSG_RESET) || digitalRead(RESET_SWITCH) == LOW)    // force race to end
@@ -337,7 +350,7 @@ void timer_racing_state()
       smsg(SMSG_ACKNW);
     }
   }
-
+   
   send_race_results();
 
   mode = mFINISH;
@@ -664,11 +677,13 @@ void update_display(int lane, unsigned char msg[])
 
   for (int d = 0; d<=4; d++)
   {
+    dbg(myDebug, "Writing digit for lane ", lane);
     disp_mat[lane].writeDigitRaw(d, msg[d]);
 #ifdef DUAL_DISP
 #ifdef DUAL_MODE
     if (d == 3)
     {
+      dbg(myDebug, "Writing result to 8x8");
       disp_8x8[lane+4].setTextSize(1);
       disp_8x8[lane+4].setRotation(3);
       disp_8x8[lane+4].setCursor(2, 0);
@@ -678,6 +693,7 @@ void update_display(int lane, unsigned char msg[])
          disp_8x8[lane+4].print("-");
     }
 #else
+    dbg(myDebug, "ELSE Writing digit for lane ", lane+4);
     disp_mat[lane+4].writeDigitRaw(d, msg[d]);
 #endif
 #endif
@@ -710,6 +726,7 @@ void update_display(int lane, int display_place, unsigned long display_time, int
 //  dbg(fDebug, "led: lane = ", lane);
 //  dbg(fDebug, "led: plce = ", display_place);
 //  dbg(fDebug, "led: time = ", display_time);
+dbg(myDebug, "Updating display for lane ", lane);
 
 #ifdef LED_DISPLAY
   if (display_mode)
@@ -910,9 +927,9 @@ void set_status_led()
   READ SERIAL DATA FROM COMPUTER
  *================================================================================*/
 int get_serial_data()
-{
+{  
   int data = 0;
-
+ 
   if (Serial.available() > 0)
   {
     data = Serial.read();
@@ -920,14 +937,14 @@ int get_serial_data()
   }
 
   return data;
-}
+}  
 
 
 /*================================================================================*
   INITIALIZE TIMER
  *================================================================================*/
 void initialize(boolean powerup)
-{
+{  
   for (int n=0; n<NUM_LANES; n++)
   {
     lane_time[n] = 0;
@@ -963,23 +980,23 @@ void initialize(boolean powerup)
   UNMASK ALL LANES
  *================================================================================*/
 void unmask_all_lanes()
-{
+{  
   dbg(fDebug, "unmask all lanes");
 
   for (int n=0; n<NUM_LANES; n++)
   {
     lane_mask[n] = false;
-  }
+  }  
 
   return;
-}
+}  
 
 
 /*================================================================================*
   SEND DEBUG TO COMPUTER
  *================================================================================*/
 void dbg(int flag, const char * msg, int val)
-{
+{  
   char tmps[50];
 
 
@@ -1006,7 +1023,7 @@ void dbg(int flag, const char * msg, int val)
   SEND SERIAL MESSAGE (CHAR) TO COMPUTER
  *================================================================================*/
 void smsg(char msg, boolean crlf)
-{
+{  
   if (crlf)
   {
     Serial.println(msg);
@@ -1024,7 +1041,7 @@ void smsg(char msg, boolean crlf)
   SEND SERIAL MESSAGE (STRING) TO COMPUTER
  *================================================================================*/
 void smsg_str(const char * msg, boolean crlf)
-{
+{  
   if (crlf)
   {
     Serial.println(msg);
@@ -1101,3 +1118,4 @@ void send_timer_info()
 
   return;
 }
+
