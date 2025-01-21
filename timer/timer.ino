@@ -27,11 +27,15 @@
 #define GATE_RESET   0                 // Enable closing start gate to reset timer
 
 #define LED_DISPLAY                    // Enable lane place/time displays
+// DUAL_DISP indicates displays 4,5,6,7 exist.
 #define DUAL_DISP                      // dual displays per lane (4 lanes max)
-#define DUAL_MODE                      // dual display mode
+
+// USING_8X8 indicates displays 4,5,6,7 are 8x8 displays (instead of 7-segment displays).
+#define USING_8X8                      // 8x8 display enabled
 //#define LARGE_DISP                   // utilize large Adafruit displays (see website)
 
-#define SHOW_PLACE   0                 // Show place mode
+// A SHOW_PLACE of 1 indicates the place should be shown on the second set of displays.
+#define SHOW_PLACE   1                 // Show place mode
 #define PLACE_DELAY  3                 // Delay (secs) when displaying place/time
 #define MIN_BRIGHT   0                 // minimum display brightness (0-15)
 #define MAX_BRIGHT   15                // maximum display brightness (0-15)
@@ -67,6 +71,8 @@
 #define PWM_LED_ON   220
 #define PWM_LED_OFF  255
 #define char2int(c) (c - '0')
+
+typedef enum {DISPLAY_MODE_TIME=0, DISPLAY_MODE_PLACE} display_mode_t;
 
 //
 // serial messages                        <- to timer
@@ -150,7 +156,7 @@ unsigned char msgBlank[] = {0x00, 0x00, 0x00, 0x00, 0x00};  // (blank)
 Adafruit_7segment disp_mat[MAX_DISP];
 #endif
 
-#ifdef DUAL_MODE                       // uses 8x8 matrix displays
+#ifdef USING_8X8                       // uses 8x8 matrix displays
 Adafruit_8x8matrix disp_8x8[MAX_DISP];
 #endif
 
@@ -189,7 +195,7 @@ void setup()
     disp_mat[n].drawColon(false);
     disp_mat[n].writeDisplay();
 
-#ifdef DUAL_MODE
+#ifdef USING_8X8
     disp_8x8[n] = Adafruit_8x8matrix();
     disp_8x8[n].begin(DISP_ADD[n]);
     disp_8x8[n].clear();
@@ -338,7 +344,7 @@ void timer_racing_state()
         }
         lane_place[n] = finish_order;
 
-        update_display(n, lane_place[n], lane_time[n], SHOW_PLACE);
+        update_display(n, lane_place[n], lane_time[n], DISPLAY_MODE_TIME);
       }
     }
    
@@ -563,7 +569,7 @@ void test_pdt_hw()
       disp_mat[n].writeDisplay();
 
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
       disp_8x8[n+4].clear();
       disp_8x8[n+4].setTextSize(1);
       disp_8x8[n+4].setRotation(3);
@@ -628,9 +634,8 @@ void send_race_results()
 void display_race_results()
 {
   unsigned long now;
-  static boolean display_mode;
+  static display_mode_t display_mode = DISPLAY_MODE_TIME;
   static unsigned long last_display_update = 0;
-
 
   if (!SHOW_PLACE) return;
 
@@ -639,7 +644,7 @@ void display_race_results()
   if (last_display_update == 0)  // first cycle
   {
     last_display_update = now;
-    display_mode = false;
+    display_mode = DISPLAY_MODE_TIME;
   }
 
   if ((now - last_display_update) > (unsigned long)(PLACE_DELAY * 1000))
@@ -651,13 +656,18 @@ void display_race_results()
       update_display(n, lane_place[n], lane_time[n], display_mode);
     }
 
-    display_mode = !display_mode;
+    // Alternate mode so update_display() alternates between
+    // showing race times and race places.
+    if (display_mode == DISPLAY_MODE_TIME)
+        display_mode = DISPLAY_MODE_PLACE;
+    else
+        display_mode = DISPLAY_MODE_TIME;
+
     last_display_update = now;
   }
 
   return;
 }
-
 
 /*================================================================================*
   SEND MESSAGE TO DISPLAY
@@ -668,7 +678,7 @@ void update_display(int lane, unsigned char msg[])
 #ifdef LED_DISPLAY
   disp_mat[lane].clear();
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
   disp_8x8[lane+4].clear();
 #else
   disp_mat[lane+4].clear();
@@ -680,7 +690,7 @@ void update_display(int lane, unsigned char msg[])
     dbg(myDebug, "Writing digit for lane ", lane);
     disp_mat[lane].writeDigitRaw(d, msg[d]);
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
     if (d == 3)
     {
       dbg(myDebug, "Writing result to 8x8");
@@ -701,7 +711,7 @@ void update_display(int lane, unsigned char msg[])
 
   disp_mat[lane].writeDisplay();
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
   disp_8x8[lane+4].writeDisplay();
 #else
   disp_mat[lane+4].writeDisplay();
@@ -716,7 +726,7 @@ void update_display(int lane, unsigned char msg[])
 /*================================================================================*
   UPDATE LANE PLACE/TIME DISPLAY
  *================================================================================*/
-void update_display(int lane, int display_place, unsigned long display_time, int display_mode)
+void update_display(int lane, int display_place, unsigned long display_time, display_mode_t display_mode)
 {
   int c;
   char ctime[10], cplace[4];
@@ -729,7 +739,8 @@ void update_display(int lane, int display_place, unsigned long display_time, int
 dbg(myDebug, "Updating display for lane ", lane);
 
 #ifdef LED_DISPLAY
-  if (display_mode)
+  // Alternate between showing place and showing time, depending on display_mode.
+  if (display_mode == DISPLAY_MODE_PLACE)
   {
     if (display_place > 0)  // show place order
     {
@@ -752,7 +763,7 @@ dbg(myDebug, "Updating display for lane ", lane);
       update_display(lane, msgDashL);
     }
   }
-  else                      // show finish time
+  else  // DISPLAY_MODE_TIME show finish time
   {
     if (display_time > 0)
     {
@@ -760,7 +771,7 @@ dbg(myDebug, "Updating display for lane ", lane);
       disp_mat[lane].drawColon(false);
 
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
       disp_8x8[lane+4].clear();
       disp_8x8[lane+4].setTextSize(1);
       disp_8x8[lane+4].setRotation(3);
@@ -785,7 +796,9 @@ dbg(myDebug, "Updating display for lane ", lane);
 #endif
         disp_mat[lane].writeDigitNum(d + int(d / 2), char2int(ctime[c]), showdot);    // time
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
+        // This place displaying is redundant, as the place is already
+        // shown in the first half of this function.
         sprintf(cplace,"%1d", display_place);
         disp_8x8[lane+4].print(cplace[0]);
 #else
@@ -799,7 +812,7 @@ dbg(myDebug, "Updating display for lane ", lane);
 #ifdef LARGE_DISP
       disp_mat[lane].writeDigitRaw(2, 16);
 #ifdef DUAL_DISP
-#ifndef DUAL_MODE
+#ifndef USING_8X8
       disp_mat[lane+4].writeDigitRaw(2, 16);
 #endif
 #endif
@@ -807,7 +820,7 @@ dbg(myDebug, "Updating display for lane ", lane);
 
       disp_mat[lane].writeDisplay();
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
       disp_8x8[lane+4].writeDisplay();
 #else
       disp_mat[lane+4].writeDisplay();
@@ -818,7 +831,7 @@ dbg(myDebug, "Updating display for lane ", lane);
     {
       update_display(lane, msgDashT);
     }
-  }
+  }  // DISPLAY_MODE_TIME show finish time
 #endif
 
   return;
@@ -870,7 +883,7 @@ void set_display_brightness()
     {
       disp_mat[n].setBrightness((int)display_level);
 #ifdef DUAL_DISP
-#ifdef DUAL_MODE
+#ifdef USING_8X8
       disp_8x8[n+4].setBrightness((int)display_level);
 #else
       disp_mat[n+4].setBrightness((int)display_level);
@@ -1093,10 +1106,10 @@ void send_timer_info()
 #else
   Serial.println("  DUAL_DISP     0");
 #endif
-#ifdef DUAL_MODE
-  Serial.println("  DUAL_MODE     1");
+#ifdef USING_8X8
+  Serial.println("  USING_8X8     1");
 #else
-  Serial.println("  DUAL_MODE     0");
+  Serial.println("  USING_8X8     0");
 #endif
 
 #ifdef LARGE_DISP
