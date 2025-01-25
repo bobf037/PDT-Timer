@@ -1,4 +1,3 @@
-
 /*================================================================================*
    Pinewood Derby Timer                                Version 3.10 - 12 Dec 2020
    www.dfgtec.com/pdt
@@ -34,8 +33,8 @@
 #define USING_8X8                      // 8x8 display enabled
 //#define LARGE_DISP                   // utilize large Adafruit displays (see website)
 
-// A SHOW_PLACE of 1 indicates the place should be shown on the second set of displays.
-#define SHOW_PLACE   1                 // Show place mode
+// A SHOW_PLACE of 1 indicates the place and time should alternate on the seven segment
+#define SHOW_PLACE   0                 // Show place mode
 #define PLACE_DELAY  3                 // Delay (secs) when displaying place/time
 #define MIN_BRIGHT   0                 // minimum display brightness (0-15)
 #define MAX_BRIGHT   15                // maximum display brightness (0-15)
@@ -1131,4 +1130,3 @@ void send_timer_info()
 
   return;
 }
-
