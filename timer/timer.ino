@@ -105,10 +105,12 @@ typedef enum {DISPLAY_MODE_TIME=0, DISPLAY_MODE_PLACE} display_mode_t;
  *-----------------------------------------*/
 byte BRIGHT_LEV   = A0;                // brightness level
 byte RESET_SWITCH =  8;                // reset switch
+#define RESET_SWITCH_PRESSED 0
 byte STATUS_LED_R =  9;                // status LED (red)
-byte STATUS_LED_B = 10;                // status LED (blue)
-byte STATUS_LED_G = 11;                // status LED (green)
+byte STATUS_LED_B = 11;                // status LED (blue) (blue was 10)
+byte STATUS_LED_G = 10;                // status LED (green)(green was 11)
 byte START_GATE   = 12;                // start gate switch
+#define START_GATE_PRESSED 0
 byte START_SOL    = 13;                // start solenoid
 
 //                Display #    1     2     3     4     5     6     7     8
@@ -122,7 +124,7 @@ byte LANE_DET [MAX_LANE] = {   2,    3,    4,    5,    6,    7};                
   - global variables -
  *-----------------------------------------*/
 boolean       fDebug = false;          // debug flag
-boolean myDebug = true;
+boolean myDebug = false; // true to turn on our custom debugging ;
 boolean       ready_first;             // first pass in ready state flag
 boolean       finish_first;            // first pass in finish state flag
 
@@ -220,9 +222,10 @@ void setup()
 /*-----------------------------------------*
   - check for test mode -
  *-----------------------------------------*/
-  if (digitalRead(RESET_SWITCH) == LOW)
+  if (digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED)
   {
     mode = mTEST;
+    set_status_led();
     test_pdt_hw();
   }
 
@@ -279,22 +282,26 @@ void timer_ready_state()
     ready_first = false;
   }
 
+  /*
   if (serial_data == int(SMSG_SOLEN))    // activate start solenoid
   {
     digitalWrite(START_SOL, HIGH);
     smsg(SMSG_ACKNW);
-  }
+  } */
  
-  if (digitalRead(START_GATE) == START_TRIP)    // timer start
+  if (digitalRead(START_GATE) == START_GATE_PRESSED)    // timer start
   {
     start_time = micros();
-
+    digitalWrite(START_SOL, HIGH);
+    delay (500);
     digitalWrite(START_SOL, LOW);
 
     smsg(SMSG_START);
     delay(100);
 
     mode = mRACING;
+    set_status_led();
+
   }
 
   return;
@@ -349,7 +356,7 @@ void timer_racing_state()
    
     serial_data = get_serial_data();
 
-    if (serial_data == int(SMSG_FORCE) || serial_data == int(SMSG_RESET) || digitalRead(RESET_SWITCH) == LOW)    // force race to end
+    if (serial_data == int(SMSG_FORCE) || serial_data == int(SMSG_RESET) || digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED )    // force race to end
     {
       lanes_left = 0;
       smsg(SMSG_ACKNW);
@@ -359,6 +366,8 @@ void timer_racing_state()
   send_race_results();
 
   mode = mFINISH;
+  set_status_led();
+
 
   return;
 }
@@ -375,11 +384,11 @@ void timer_finished_state()
     finish_first = false;
   }
 
-  if (GATE_RESET && digitalRead(START_GATE) != START_TRIP)    // gate closed
+  if (GATE_RESET && digitalRead(START_GATE) != START_GATE_PRESSED)    // gate closed
   {
     delay(500);    // ignore any switch bounce
 
-    if (digitalRead(START_GATE) != START_TRIP)    // gate still closed
+    if (digitalRead(START_GATE) != START_GATE_PRESSED)    // gate still closed
     {
       initialize();    // reset timer
     }
@@ -409,6 +418,19 @@ void process_general_msgs()
 
   serial_data = get_serial_data();
 
+  if ( (serial_data == int(SMSG_SOLEN)) && (mode == mREADY))    // timer start
+  {
+    start_time = micros();
+    digitalWrite(START_SOL, HIGH);
+    delay (500);
+    digitalWrite(START_SOL, LOW);
+
+    smsg(SMSG_START);
+    delay(100);
+    mode = mRACING;
+    set_status_led();
+  }
+
   if (serial_data == int(SMSG_GVERS))    // get software version
   {
       sprintf(tmps, "vert=%s", PDT_VERSION);
@@ -434,7 +456,7 @@ void process_general_msgs()
 
   else if (serial_data == int(SMSG_CGATE))    // check start gate
   {
-    if (digitalRead(START_GATE) == START_TRIP)    // gate open
+    if (digitalRead(START_GATE) == START_GATE_PRESSED)    // gate open
     {
       smsg(SMSG_GOPEN);
     }
@@ -444,9 +466,9 @@ void process_general_msgs()
     }
   }
 
-  else if (serial_data == int(SMSG_RESET) || digitalRead(RESET_SWITCH) == LOW)    // timer reset
+  else if (serial_data == int(SMSG_RESET) || digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED)    // timer reset
   {
-    if (digitalRead(START_GATE) != START_TRIP)    // only reset if gate closed
+    if (digitalRead(START_GATE) != START_GATE_PRESSED)    // only reset if gate closed
     {
       initialize();
     }
@@ -493,6 +515,23 @@ void test_pdt_hw()
   smsg_str("TEST MODE");
   set_status_led();
   delay(2000);
+int rlftest=0;
+while(rlftest)  {
+    if (digitalRead(START_GATE) == START_GATE_PRESSED)    {
+       smsg_str("START_GATE==0");
+    }
+    else  {
+       smsg_str("START_GATE==1");
+    }
+
+    if (digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED) {
+       smsg_str("RESET_SWITCH==0");
+    }
+    else  {
+       smsg_str("RESET_SWITCH==1");
+    }
+      delay(2000);
+}
 
 /*-----------------------------------------*
    show status of lane detectors
@@ -513,7 +552,7 @@ void test_pdt_hw()
       }
     }
 
-    if (digitalRead(RESET_SWITCH) == LOW)  // break out of this test
+    if (digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED)  // break out of this test
     {
       clear_displays();
       delay(1000);
@@ -527,7 +566,7 @@ void test_pdt_hw()
  *-----------------------------------------*/
   while(true)
   {
-    if (digitalRead(START_GATE) == START_TRIP)
+    if (digitalRead(START_GATE) == START_GATE_PRESSED)
     {
       update_display(0, msgGateO);
     }
@@ -536,7 +575,7 @@ void test_pdt_hw()
       update_display(0, msgGateC);
     }
 
-    if (digitalRead(RESET_SWITCH) == LOW)  // break out of this test
+    if (digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED)  // break out of this test
     {
       clear_displays();
       delay(1000);
@@ -590,7 +629,7 @@ void test_pdt_hw()
     }
 #endif
 
-    if (digitalRead(RESET_SWITCH) == LOW)  // break out of this test
+    if (digitalRead(RESET_SWITCH) == RESET_SWITCH_PRESSED)  // break out of this test
     {
       clear_displays();
       break;
@@ -909,19 +948,20 @@ void set_status_led()
   b_lev = PWM_LED_OFF;
   g_lev = PWM_LED_OFF;
 
-  if (mode == mREADY)         // blue
+  if (mode == mREADY)         // Green.   (old code was blue)
+  {
+   g_lev = PWM_LED_ON;
+
+  }
+  else if (mode == mRACING)  // Blue (old code was green)
   {
     b_lev = PWM_LED_ON;
-  }
-  else if (mode == mRACING)  // green
-  {
-    g_lev = PWM_LED_ON;
   }
   else if (mode == mFINISH)  // red
   {
     r_lev = PWM_LED_ON;
   }
-  else if (mode == mTEST)    // yellow
+  else if (mode == mTEST)    // yellow (actually purple)
   {
     r_lev = PWM_LED_ON;
     g_lev = PWM_LED_ON;
@@ -954,7 +994,7 @@ int get_serial_data()
 
 /*================================================================================*
   INITIALIZE TIMER
- *================================================================================*/
+ *=!===============================================================================*/
 void initialize(boolean powerup)
 {  
   for (int n=0; n<NUM_LANES; n++)
@@ -968,7 +1008,7 @@ void initialize(boolean powerup)
   digitalWrite(START_SOL, LOW);
 
   // if power up and gate is open -> goto FINISH state
-  if (powerup && digitalRead(START_GATE) == START_TRIP)
+  if (powerup && digitalRead(START_GATE) == START_GATE_PRESSED)
   {
     mode = mFINISH;
   }
@@ -979,6 +1019,8 @@ void initialize(boolean powerup)
     smsg(SMSG_READY);
     delay(100);
   }
+  set_status_led();
+
   Serial.flush();
 
   ready_first  = true;
